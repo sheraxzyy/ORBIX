@@ -33,8 +33,15 @@ export const ProfilePage: React.FC = () => {
     e.preventDefault();
     if (!user) return;
 
-    if (username.length < 3) {
-      setErrorMsg('Username must be at least 3 characters.');
+    const cleanUsername = username.toLowerCase().trim();
+
+    if (cleanUsername.length < 3 || cleanUsername.length > 30) {
+      setErrorMsg('Username must be between 3 and 30 characters.');
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(cleanUsername)) {
+      setErrorMsg('Username can only contain letters, numbers, and underscores.');
       return;
     }
 
@@ -45,7 +52,7 @@ export const ProfilePage: React.FC = () => {
     try {
       await profileService.updateProfile(user.id, {
         display_name: displayName.trim(),
-        username: username.toLowerCase().trim(),
+        username: cleanUsername,
         bio: bio.trim(),
         avatar_url: avatarUrl,
       });

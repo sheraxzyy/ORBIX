@@ -1,14 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { LeftSidebar } from './LeftSidebar';
 import { RightInfoPanel } from './RightInfoPanel';
 import { MobileBottomNav } from './MobileBottomNav';
+import { AuthModal } from '@/components/common/AuthModal';
+import { useAuth } from '@/contexts/AuthContext';
 
 export const AppLayout: React.FC = () => {
   const { conversationId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const { isAuthModalOpen, closeAuthModal, openAuthModal, authModalAction } = useAuth();
   const [showRightPanel, setShowRightPanel] = useState(false);
+
+  useEffect(() => {
+    if ((location.state as { requireAuth?: boolean })?.requireAuth) {
+      openAuthModal('Authentication Required');
+    }
+  }, [location.state, openAuthModal]);
 
   // Determine if on a dedicated conversation page on mobile
   const isConversationOpenOnMobile = Boolean(conversationId);
@@ -50,7 +59,15 @@ export const AppLayout: React.FC = () => {
 
       {/* Mobile Bottom Navigation: only visible when NOT in an active conversation viewport */}
       {!isConversationOpenOnMobile && <MobileBottomNav />}
+
+      {/* Public Guest Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={closeAuthModal}
+        intendedAction={authModalAction}
+      />
     </div>
   );
 };
+
 

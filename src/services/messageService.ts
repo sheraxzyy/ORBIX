@@ -58,9 +58,15 @@ export const messageService = {
     conversationId: string,
     senderId: string,
     body: string,
-    replyToId?: string
+    replyToId?: string,
+    providedClientId?: string
   ): Promise<Message> {
-    const clientId = crypto.randomUUID();
+    const trimmed = body.trim();
+    if (!trimmed) {
+      throw new Error('Message body cannot be empty or whitespace only.');
+    }
+
+    const clientId = providedClientId || crypto.randomUUID();
 
     const { data, error } = await supabase
       .from('messages')
@@ -68,14 +74,17 @@ export const messageService = {
         conversation_id: conversationId,
         sender_id: senderId,
         client_id: clientId,
-        body: body.trim(),
+        body: trimmed,
         reply_to_id: replyToId || null,
         seq: 0,
       })
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error inserting message to Supabase:', error);
+      throw new Error(error.message || 'Failed to send message.');
+    }
     return data as Message;
   },
 

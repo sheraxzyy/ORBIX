@@ -299,6 +299,15 @@ export const conversationService = {
         },
         () => onChange()
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        () => onChange()
+      )
       .subscribe();
 
     return () => {

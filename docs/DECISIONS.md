@@ -37,3 +37,34 @@
   - Unread counts are computed comparing the user's `last_read_message_id` (or `last_read_seq`) on `conversation_members` against the conversation's latest `seq`.
 - **Consequences:** High-performance, constant-time unread calculation per conversation.
 
+## ADR 005: Case-Insensitive Database-Enforced Unique Usernames
+- **Status:** Accepted
+- **Context:** Ensuring users cannot register duplicate usernames under varying case or whitespace permutations (e.g. `sheran` vs `Sheran` vs `SHERAN`).
+- **Decision:**
+  - Created unique PostgreSQL index `profiles_username_unique` on `LOWER(TRIM(username))`.
+  - Enforced format check `^[a-zA-Z0-9_]{3,30}$` and reserved system handle blacklist.
+  - Implemented pre-flight availability checks in `profileService` and translated database constraint conflicts into user-friendly error messages.
+- **Consequences:** Permanent prevention of duplicate handles, deterministic user identity across the platform.
+
+## ADR 006: Username-Only Discovery Architecture
+- **Status:** Accepted
+- **Context:** User privacy and discovery hygiene; preventing display name collisions or exposing user emails.
+- **Decision:**
+  - Restricted user discovery, add contact, and new chat search to query exclusively on `profiles.username` using ILIKE queries.
+  - Omitted email columns from discovery endpoints entirely.
+  - Stripped `@` prefix automatically to handle natural handles like `@sheran`.
+  - Formatted search results to display `@username` prominently as the primary key with display name as secondary info.
+- **Consequences:** Zero private email exposure, predictable handle-based discovery.
+
+## ADR 007: Public Guest Mode & Immutable Administrative Core
+- **Status:** Accepted
+- **Context:** Permitting public visitors to preview the live application layout without forced login, while maintaining absolute security on protected mutations, and providing administrative control.
+- **Decision:**
+  - Root path `/` directly mounts the normal ORBIX messaging shell in guest mode.
+  - Interceptors prompt a sleek `AuthModal` whenever unauthenticated guests attempt protected actions (message sending, file upload, reactions, new chats, contacts, groups).
+  - Built `/admin` protected by `RequireAdmin` guard and server-side RBAC validation.
+  - Implemented atomic daily registration limiter with concurrency-safe database counter and invite-only capabilities.
+  - Structured immutable `audit_logs` protected by PostgreSQL RLS with `UPDATE (false)` and `DELETE (false)`.
+- **Consequences:** High visitor conversion, zero data exposure to unauthenticated sessions, enterprise-grade administrative governance.
+
+

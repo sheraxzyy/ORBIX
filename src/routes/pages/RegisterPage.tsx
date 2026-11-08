@@ -5,6 +5,7 @@ import { BrandLogo } from '@/components/common/BrandLogo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
+import { profileService, RESERVED_USERNAMES } from '@/services/profileService';
 
 export const RegisterPage: React.FC = () => {
   const [fullName, setFullName] = useState('');
@@ -21,15 +22,22 @@ export const RegisterPage: React.FC = () => {
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName || !username || !email || !password) return;
+    if (!fullName.trim() || !username.trim() || !email.trim() || !password) return;
 
-    if (username.length < 3) {
-      setErrorMsg('Username must be at least 3 characters.');
+    const cleanUsername = username.trim().toLowerCase();
+
+    if (cleanUsername.length < 3 || cleanUsername.length > 30) {
+      setErrorMsg('Username must be between 3 and 30 characters.');
       return;
     }
 
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+    if (!/^[a-zA-Z0-9_]+$/.test(cleanUsername)) {
       setErrorMsg('Username can only contain letters, numbers, and underscores.');
+      return;
+    }
+
+    if (RESERVED_USERNAMES.includes(cleanUsername)) {
+      setErrorMsg('This username is reserved by the system. Please choose another username.');
       return;
     }
 
@@ -42,7 +50,15 @@ export const RegisterPage: React.FC = () => {
     setErrorMsg(null);
 
     try {
-      await signUp(email, password, username, fullName);
+      // Pre-registration availability check
+      const available = await profileService.isUsernameAvailable(cleanUsername);
+      if (!available) {
+        setErrorMsg('This username is already taken. Please choose another username.');
+        setLoading(false);
+        return;
+      }
+
+      await signUp(email.trim(), password, cleanUsername, fullName.trim());
       setSuccessInfo(
         'Account initialized! If email confirmation is required, please check your inbox before logging in.'
       );
@@ -51,7 +67,16 @@ export const RegisterPage: React.FC = () => {
       }, 1500);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Registration failed';
-      setErrorMsg(msg);
+      if (
+        msg.includes('unique') ||
+        msg.includes('profiles_username_unique') ||
+        msg.includes('already registered') ||
+        msg.includes('duplicate key')
+      ) {
+        setErrorMsg('This username is already taken. Please choose another username.');
+      } else {
+        setErrorMsg(msg);
+      }
     } finally {
       setLoading(false);
     }

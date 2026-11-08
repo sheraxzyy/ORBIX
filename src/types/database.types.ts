@@ -12,6 +12,10 @@ export interface Profile {
   display_name: string;
   avatar_url: string | null;
   bio: string;
+  status?: 'active' | 'suspended' | 'banned';
+  suspended_until?: string | null;
+  ban_reason?: string | null;
+  last_seen_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -117,5 +121,70 @@ export interface Notification {
   title: string;
   body: string;
   is_read: boolean;
+  created_at: string;
+}
+
+export type AppRole = 'user' | 'moderator' | 'admin' | 'super_admin';
+
+export interface UserRole {
+  user_id: string;
+  role: AppRole;
+  granted_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlatformSettings {
+  id: number;
+  registrations_enabled: boolean;
+  invite_only: boolean;
+  max_registrations_per_day: number;
+  registration_notice: string;
+  maintenance_mode: boolean;
+  allow_guest_preview: boolean;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface RegistrationCounter {
+  count_date: string;
+  count: number;
+  updated_at: string;
+}
+
+export interface Invitation {
+  id: string;
+  code: string;
+  created_by: string | null;
+  max_uses: number;
+  uses_count: number;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export type ReportCategory = 'spam' | 'harassment' | 'inappropriate' | 'impersonation' | 'other';
+export type ReportStatus = 'pending' | 'resolved' | 'dismissed';
+
+export interface ModerationReport {
+  id: string;
+  reporter_id: string;
+  reported_user_id: string;
+  conversation_id: string | null;
+  message_id: string | null;
+  category: ReportCategory;
+  reason: string;
+  status: ReportStatus;
+  admin_notes: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+export interface AuditLog {
+  id: string;
+  admin_id: string;
+  action_type: string;
+  target_user_id: string | null;
+  details: Record<string, unknown>;
   created_at: string;
 }

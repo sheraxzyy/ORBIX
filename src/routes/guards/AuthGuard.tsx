@@ -18,7 +18,30 @@ export const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children 
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    // Open auth modal and redirect to public chat view
+    return <Navigate to="/app/chats" state={{ from: location, requireAuth: true }} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+export const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isLoading, isAdmin } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background text-text">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          <span className="text-xs font-mono text-text-muted">Verifying Administrative Privileges...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !isAdmin) {
+    return <Navigate to="/app/chats" state={{ from: location, denied: true }} replace />;
   }
 
   return <>{children}</>;

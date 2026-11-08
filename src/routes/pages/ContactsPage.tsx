@@ -221,7 +221,12 @@ export const ContactsPage: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-surface border border-border rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-border">
-              <h3 className="text-base font-bold text-text">Add Contact</h3>
+              <div>
+                <h3 className="text-base font-bold text-text">Find people by username</h3>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  Ask your friends for their ORBIX username to find them.
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
@@ -232,57 +237,87 @@ export const ContactsPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="relative">
-              <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-              <Input
-                type="search"
-                autoFocus
-                placeholder="Search username or display name..."
-                value={addSearchQuery}
-                onChange={(e) => handleSearchUsers(e.target.value)}
-                className="pl-9 bg-card text-xs h-10"
-              />
+            <div className="space-y-1.5">
+              <label htmlFor="contactSearchInput" className="block text-xs font-medium text-text">
+                Find people by username
+              </label>
+              <div className="relative">
+                <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  id="contactSearchInput"
+                  type="search"
+                  autoFocus
+                  placeholder="Enter a username... (e.g. @sheran)"
+                  value={addSearchQuery}
+                  onChange={(e) => handleSearchUsers(e.target.value)}
+                  className="pl-9 bg-card text-xs h-10"
+                />
+              </div>
+              <p className="text-[10px] text-text-muted font-mono">
+                Example: @sheran
+              </p>
             </div>
 
             <div className="max-h-60 overflow-y-auto space-y-1">
               {searching ? (
                 <div className="py-6 text-center space-y-2">
                   <Loader2 className="w-5 h-5 animate-spin text-primary mx-auto" />
-                  <p className="text-xs text-text-muted">Searching users...</p>
+                  <p className="text-xs text-text-muted">Searching usernames...</p>
                 </div>
               ) : searchResults.length === 0 ? (
                 <p className="text-center py-6 text-xs text-text-muted">
                   {addSearchQuery.trim()
-                    ? 'No matching users found.'
-                    : 'Type a name or username to search.'}
+                    ? 'No users found matching that username.'
+                    : 'Enter an ORBIX username to discover users.'}
                 </p>
               ) : (
                 searchResults.map((target) => (
                   <div
                     key={target.id}
-                    className="p-2.5 rounded-xl bg-card border border-border flex items-center justify-between"
+                    className="p-2.5 rounded-xl bg-card border border-border flex items-center justify-between group"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-xs">
-                        {target.display_name.substring(0, 2).toUpperCase()}
-                      </div>
+                      {target.avatar_url ? (
+                        <img
+                          src={target.avatar_url}
+                          alt={target.username}
+                          className="w-9 h-9 rounded-full object-cover border border-border shrink-0"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-xs shrink-0">
+                          {target.display_name.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
                       <div>
-                        <p className="text-xs font-semibold text-text">{target.display_name}</p>
-                        <p className="text-[11px] text-text-muted">@{target.username}</p>
+                        <p className="text-xs font-bold text-text group-hover:text-primary transition-colors">
+                          @{target.username}
+                        </p>
+                        <p className="text-[11px] text-text-muted">{target.display_name}</p>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      disabled={addingId === target.id}
-                      onClick={() => handleAddContact(target)}
-                      className="text-xs"
-                    >
-                      {addingId === target.id ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        'Add'
-                      )}
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleStartChat(target.id)}
+                        className="text-xs h-8 px-2"
+                        title="Direct Chat"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={addingId === target.id}
+                        onClick={() => handleAddContact(target)}
+                        className="text-xs h-8 px-3"
+                      >
+                        {addingId === target.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          'Add'
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}

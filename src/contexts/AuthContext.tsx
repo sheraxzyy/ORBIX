@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { authService } from '@/services/authService';
 import { profileService, type Profile } from '@/services/profileService';
 import { settingsService, type UserSettings } from '@/services/settingsService';
+import type { AppRole } from '@/types/database.types';
 import { useTheme, type Theme } from './ThemeContext';
 
 interface AuthContextType {
@@ -13,6 +14,15 @@ interface AuthContextType {
   settings: UserSettings | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isGuest: boolean;
+  userRole: AppRole;
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+  isModerator: boolean;
+  isAuthModalOpen: boolean;
+  authModalAction: string | null;
+  openAuthModal: (actionDesc?: string) => void;
+  closeAuthModal: () => void;
   signIn: (email: string, pass: string) => Promise<void>;
   signUp: (email: string, pass: string, username: string, name: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -27,26 +37,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [userRole, setUserRole] = useState<AppRole>('user');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authModalAction, setAuthModalAction] = useState<string | null>(null);
   const { setTheme } = useTheme();
+
+  const openAuthModal = useCallback((actionDesc?: string) => {
+    setAuthModalAction(actionDesc || null);
+    setIsAuthModalOpen(true);
+  }, []);
+
+  const closeAuthModal = useCallback(() => {
+    setIsAuthModalOpen(false);
+    setAuthModalAction(null);
+  }, []);
 
   const loadUserData = useCallback(async (userId: string) => {
     try {
-      const [prof, userSets] = await Promise.all([
+      const [prof, userSets, roleRes] = await Promise.all([
         profileService.getProfile(userId).catch(() => null),
         settingsService.getUserSettings(userId).catch(() => null),
+        (async () => {
+          try {
+            const res = await supabase
+              .from('user_roles')
+              .select('role')
+              .eq('user_id', userId)
+              .single();
+            return res;
+          } catch {
+            return null;
+          }
+        })(),
       ]);
 
       if (prof) setProfile(prof);
       if (userSets) {
         setSettings(userSets);
-        // Synchronize theme from user settings across devices
         if (userSets.theme) {
           setTheme(userSets.theme as Theme);
         }
       }
+      if (roleRes && 'data' in roleRes && roleRes.data?.role) {
+        setUserRole(roleRes.data.role as AppRole);
+      } else {
+        setUserRole('user');
+      }
     } catch (err) {
-      console.error('Error loading user profile and settings:', err);
+      console.error('Error loading user profile, settings and role:', err);
     }
   }, [setTheme]);
 
@@ -119,6 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSession(null);
     setProfile(null);
     setSettings(null);
+    setUserRole('user');
   };
 
   const refreshProfile = async () => {
@@ -136,6 +176,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isSuperAdmin = userRole === 'super_admin';
+  const isModerator = userRole === 'moderator' || userRole === 'admin' || userRole === 'super_admin';
+  const isGuest = !user && !isLoading;
+
   return (
     <AuthContext.Provider
       value={{
@@ -145,6 +190,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         settings,
         isAuthenticated: Boolean(user),
         isLoading,
+        isGuest,
+        userRole,
+        isAdmin,
+        isSuperAdmin,
+        isModerator,
+        isAuthModalOpen,
+        authModalAction,
+        openAuthModal,
+        closeAuthModal,
         signIn,
         signUp,
         signOut,

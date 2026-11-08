@@ -2,14 +2,18 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Send,
   Paperclip,
-  Smile,
   Info,
+  Check,
   CheckCheck,
   ShieldAlert,
   ArrowLeft,
   Loader2,
   Trash2,
   Edit2,
+  RotateCcw,
+  MessageSquare,
+  AlertCircle,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,13 +46,14 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
   onBackMobile,
   isMobileView = false,
 }) => {
-  const { user, profile } = useAuth();
+  const { user, profile, openAuthModal } = useAuth();
 
   const [conversation, setConversation] = useState<ConversationWithDetails | null>(null);
   const [messages, setMessages] = useState<MessageWithReactions[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [draftMessage, setDraftMessage] = useState<string>('');
   const [sending, setSending] = useState<boolean>(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState<string>('');
   const [typingUsers, setTypingUsers] = useState<Record<string, { username: string; isTyping: boolean }>>({});
@@ -56,6 +61,7 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
   const [uploading, setUploading] = useState<boolean>(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingChannelRef = useRef<RealtimeChannel | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -163,6 +169,13 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
 
   const handleInputChange = (val: string) => {
     setDraftMessage(val);
+    if (sendError) setSendError(null);
+
+    // Auto-resize textarea
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
 
     if (typingChannelRef.current && user && profile) {
       presenceService.broadcastTyping(typingChannelRef.current, user.id, profile.username, true);
@@ -176,14 +189,19 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!draftMessage.trim() || !conversationId || !user) return;
-
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!user) {
+      openAuthModal('Sign in to send messages');
+      return;
+    }
     const body = draftMessage.trim();
-    const tempClientId = crypto.randomUUID();
+    if (!body || !conversationId) return;
 
-    // Optimistic message item
+    const tempClientId = crypto.randomUUID();
+    const lastSeq = messages.length > 0 && messages[messages.length - 1] ? messages[messages.length - 1]!.seq : 0;
+
+    // Optimistic message item with accurate sequential sequence
     const optimisticMsg: MessageWithReactions = {
       id: tempClientId,
       conversation_id: conversationId,
@@ -192,7 +210,7 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
       body,
       reply_to_id: null,
       forwarded_from_id: null,
-      seq: Date.now(),
+      seq: lastSeq + 1,
       edited_at: null,
       deleted_at: null,
       created_at: new Date().toISOString(),
@@ -202,7 +220,11 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
 
     setMessages((prev) => [...prev, optimisticMsg]);
     setDraftMessage('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     setSending(true);
+    setSendError(null);
     setTimeout(scrollToBottom, 50);
 
     // Stop typing broadcast
@@ -211,14 +233,22 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
     }
 
     try {
-      const serverMsg = await messageService.sendMessage(conversationId, user.id, body);
+      const serverMsg = await messageService.sendMessage(
+        conversationId,
+        user.id,
+        body,
+        undefined,
+        tempClientId
+      );
       setMessages((prev) =>
         prev.map((m) =>
           m.client_id === tempClientId ? { ...serverMsg, status: 'sent' } : m
         )
       );
-    } catch (err) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to send message.';
       console.error('Failed to send message:', err);
+      setSendError(msg);
       setMessages((prev) =>
         prev.map((m) =>
           m.client_id === tempClientId ? { ...m, status: 'failed' } : m
@@ -226,6 +256,40 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
       );
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleRetryMessage = async (failedMsg: MessageWithReactions) => {
+    if (!user || !conversationId) return;
+    setSendError(null);
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.client_id === failedMsg.client_id ? { ...m, status: 'sending' } : m
+      )
+    );
+
+    try {
+      const serverMsg = await messageService.sendMessage(
+        conversationId,
+        user.id,
+        failedMsg.body,
+        failedMsg.reply_to_id || undefined,
+        failedMsg.client_id
+      );
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.client_id === failedMsg.client_id ? { ...serverMsg, status: 'sent' } : m
+        )
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Message retry failed.';
+      console.error('Failed to retry message:', err);
+      setSendError(msg);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.client_id === failedMsg.client_id ? { ...m, status: 'failed' } : m
+        )
+      );
     }
   };
 
@@ -250,7 +314,10 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
   };
 
   const handleAddReaction = async (messageId: string, emoji: string) => {
-    if (!user) return;
+    if (!user) {
+      openAuthModal('Sign in to react to messages');
+      return;
+    }
     setShowEmojiPicker(null);
     try {
       await messageService.addReaction(messageId, user.id, emoji);
@@ -263,7 +330,11 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !conversationId || !user) return;
+    if (!file || !conversationId) return;
+    if (!user) {
+      openAuthModal('Sign in to upload attachments');
+      return;
+    }
 
     setUploading(true);
     try {
@@ -281,14 +352,30 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
 
   if (!conversationId) {
     return (
-      <main className="flex-1 flex flex-col items-center justify-center h-full bg-background p-6 text-center">
-        <div className="w-16 h-16 rounded-full bg-card border border-border flex items-center justify-center text-text-muted mb-4 shadow-crimson-sm">
-          <Smile className="w-8 h-8" />
+      <main className="flex-1 flex flex-col items-center justify-center h-full bg-background p-6 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-full bg-card border border-border flex items-center justify-center text-primary mb-4 shadow-crimson-sm">
+          <MessageSquare className="w-8 h-8" />
         </div>
-        <h2 className="text-xl font-bold text-text mb-1">Select a Conversation</h2>
-        <p className="text-xs text-text-muted max-w-sm">
-          Choose an active channel from the sidebar or click + to start a new direct chat.
+        <h2 className="text-xl sm:text-2xl font-bold text-text mb-2 tracking-tight">
+          Your conversations start here.
+        </h2>
+        <p className="text-xs sm:text-sm text-text-muted max-w-sm mb-6 leading-relaxed">
+          Connect with people and start a conversation on ORBIX.
         </p>
+        <Button
+          onClick={() => {
+            if (!user) {
+              openAuthModal('Connect with people and start a conversation on ORBIX');
+            } else {
+              const newChatBtn = document.querySelector('[aria-label="New Conversation"]') as HTMLButtonElement;
+              if (newChatBtn) newChatBtn.click();
+            }
+          }}
+          className="gap-2 px-6 h-11 text-sm font-semibold shadow-crimson-sm"
+        >
+          <MessageSquare className="w-4 h-4" />
+          <span>Start Chatting</span>
+        </Button>
       </main>
     );
   }
@@ -367,11 +454,13 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
         ) : messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-2">
-            <Smile className="w-10 h-10 text-text-muted opacity-40 mb-2" />
-            <h3 className="text-sm font-bold text-text">No messages yet</h3>
-            <p className="text-xs text-text-muted max-w-xs">
-              Say hello and begin your secure conversation on ORBIX.
+          <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">
+            <div className="w-14 h-14 rounded-full bg-card border border-border flex items-center justify-center text-primary shadow-crimson-sm mb-1">
+              <MessageSquare className="w-7 h-7" />
+            </div>
+            <h3 className="text-base font-bold text-text">Your conversations start here</h3>
+            <p className="text-xs text-text-muted max-w-sm">
+              Connect with people and start a conversation on ORBIX. Send a message below to begin chatting in real time.
             </p>
           </div>
         ) : (
@@ -498,13 +587,27 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
                             })}
                           </span>
                           {isOwn && (
-                            <span>
+                            <span className="inline-flex items-center">
                               {msg.status === 'sending' ? (
                                 <Loader2 className="w-3 h-3 animate-spin text-white/70" />
                               ) : msg.status === 'failed' ? (
-                                <span className="text-white bg-danger px-1 rounded text-[9px]">Failed</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRetryMessage(msg)}
+                                  className="inline-flex items-center gap-1 bg-white text-danger px-1.5 py-0.5 rounded text-[9px] font-bold shadow-xs hover:bg-white/90 transition-colors"
+                                  title="Click to retry sending"
+                                >
+                                  <RotateCcw className="w-2.5 h-2.5" />
+                                  <span>Retry</span>
+                                </button>
+                              ) : msg.status === 'sent' ? (
+                                <span title="Sent">
+                                  <Check className="w-3.5 h-3.5 text-white/80" />
+                                </span>
                               ) : (
-                                <CheckCheck className="w-3.5 h-3.5 text-white" />
+                                <span title="Delivered / Read">
+                                  <CheckCheck className="w-3.5 h-3.5 text-white" />
+                                </span>
                               )}
                             </span>
                           )}
@@ -559,14 +662,32 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
         accept="image/*,video/*,.pdf,.doc,.docx,.txt"
       />
 
+      {/* Send Error Alert Banner */}
+      {sendError && (
+        <div className="px-4 py-2 bg-danger/10 border-t border-danger/30 text-danger text-xs flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{sendError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSendError(null)}
+            className="p-1 rounded text-danger/80 hover:text-danger hover:bg-danger/20 transition-colors"
+            aria-label="Dismiss error"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Message Composer Dock */}
       <div className="p-3 sm:p-4 border-t border-border bg-surface/80 backdrop-blur-sm">
-        <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+        <form onSubmit={handleSendMessage} className="flex items-end gap-2">
           <button
             type="button"
             disabled={uploading}
             onClick={() => fileInputRef.current?.click()}
-            className="p-2.5 rounded-xl border border-border bg-card text-text-muted hover:text-text hover:border-primary/50 transition-colors focus-visible:outline-primary"
+            className="p-2.5 rounded-xl border border-border bg-card text-text-muted hover:text-text hover:border-primary/50 transition-colors focus-visible:outline-primary mb-0.5"
             aria-label="Attach File"
             title="Attach file"
           >
@@ -577,23 +698,38 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
             )}
           </button>
 
-          <Input
-            type="text"
-            value={draftMessage}
-            onChange={(e) => handleInputChange(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 bg-card border-border h-11 text-sm focus-visible:ring-primary"
-          />
+          <div className="flex-1 relative">
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={draftMessage}
+              onChange={(e) => handleInputChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
+              className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 text-sm text-text placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary resize-none min-h-[44px] max-h-32 transition-all font-sans leading-relaxed block"
+            />
+          </div>
 
           <Button
             type="submit"
             disabled={!draftMessage.trim() || sending}
             size="default"
-            className="h-11 px-4 gap-1.5 shrink-0"
+            className="h-11 px-4 gap-1.5 shrink-0 mb-0.5"
             aria-label="Send message"
           >
-            <span className="hidden sm:inline">Send</span>
-            <Send className="w-4 h-4" />
+            {sending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <span className="hidden sm:inline">Send</span>
+                <Send className="w-4 h-4" />
+              </>
+            )}
           </Button>
         </form>
       </div>

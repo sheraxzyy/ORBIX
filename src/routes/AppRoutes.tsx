@@ -1,10 +1,10 @@
 import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { RouteSkeleton } from '@/components/common/RouteSkeleton';
-import { RequireAuth, RedirectIfAuth } from '@/routes/guards/AuthGuard';
+import { RequireAuth, RedirectIfAuth, RequireAdmin } from '@/routes/guards/AuthGuard';
 import { AppLayout } from '@/components/layout/AppLayout';
 
-// Lazy-loaded routes per Part E
+// Lazy-loaded routes
 const LandingPage = lazy(() => import('@/routes/pages/LandingPage'));
 const LoginPage = lazy(() => import('@/routes/pages/LoginPage'));
 const RegisterPage = lazy(() => import('@/routes/pages/RegisterPage'));
@@ -23,12 +23,18 @@ const SettingsPage = lazy(() => import('@/routes/pages/SettingsPage'));
 const PrivacySettingsPage = lazy(() => import('@/routes/pages/PrivacySettingsPage'));
 const NotificationSettingsPage = lazy(() => import('@/routes/pages/NotificationSettingsPage'));
 
+// Admin Dashboard View
+const AdminDashboardPage = lazy(() => import('@/routes/pages/admin/AdminDashboardPage'));
+
 export const AppRoutes: React.FC = () => {
   return (
     <Suspense fallback={<RouteSkeleton />}>
       <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<LandingPage />} />
+        {/* PHASE 4: Initial entry point shows normal ORBIX messaging interface */}
+        <Route path="/" element={<Navigate to="/app/chats" replace />} />
+        <Route path="/landing" element={<LandingPage />} />
+
+        {/* Authentication Routes */}
         <Route
           path="/login"
           element={
@@ -49,25 +55,70 @@ export const AppRoutes: React.FC = () => {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/invite/:code" element={<InviteLandingPage />} />
 
-        {/* Protected App Routes */}
-        <Route
-          path="/app"
-          element={
-            <RequireAuth>
-              <AppLayout />
-            </RequireAuth>
-          }
-        >
+        {/* Messaging Interface (Public guest-accessible shell with protected features) */}
+        <Route path="/app" element={<AppLayout />}>
           <Route index element={<Navigate to="/app/chats" replace />} />
           <Route path="chats" element={<ChatsPage />} />
           <Route path="chats/:conversationId" element={<ConversationPage />} />
-          <Route path="groups" element={<GroupsPage />} />
-          <Route path="contacts" element={<ContactsPage />} />
-          <Route path="profile" element={<ProfilePage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="settings/privacy" element={<PrivacySettingsPage />} />
-          <Route path="settings/notifications" element={<NotificationSettingsPage />} />
+          <Route
+            path="groups"
+            element={
+              <RequireAuth>
+                <GroupsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="contacts"
+            element={
+              <RequireAuth>
+                <ContactsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="profile"
+            element={
+              <RequireAuth>
+                <ProfilePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="settings"
+            element={
+              <RequireAuth>
+                <SettingsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="settings/privacy"
+            element={
+              <RequireAuth>
+                <PrivacySettingsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="settings/notifications"
+            element={
+              <RequireAuth>
+                <NotificationSettingsPage />
+              </RequireAuth>
+            }
+          />
         </Route>
+
+        {/* PHASE 5: Admin Dashboard Core (Strictly Authorized Administrators Only) */}
+        <Route
+          path="/admin"
+          element={
+            <RequireAdmin>
+              <AdminDashboardPage />
+            </RequireAdmin>
+          }
+        />
 
         {/* 404 Catch-All Route */}
         <Route path="*" element={<NotFoundPage />} />

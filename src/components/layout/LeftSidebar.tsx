@@ -10,6 +10,8 @@ import {
   Plus,
   Radio,
   LogOut,
+  LogIn,
+  Shield,
   X,
   Loader2,
 } from 'lucide-react';
@@ -30,7 +32,7 @@ interface LeftSidebarProps {
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({ currentConversationId }) => {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, isAdmin, openAuthModal } = useAuth();
   const navigate = useNavigate();
 
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
@@ -162,15 +164,40 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ currentConversationId 
         <BrandLogo variant="full" />
         <div className="flex items-center gap-1.5">
           <ThemeToggle />
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="p-2 rounded-lg text-text-muted hover:text-danger hover:bg-card transition-colors focus-visible:outline-primary"
-            title="Sign Out"
-            aria-label="Sign Out"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          {user ? (
+            <>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/admin')}
+                  className="p-2 rounded-lg text-primary hover:bg-primary/10 transition-colors focus-visible:outline-primary"
+                  title="Admin Dashboard"
+                  aria-label="Admin Dashboard"
+                >
+                  <Shield className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="p-2 rounded-lg text-text-muted hover:text-danger hover:bg-card transition-colors focus-visible:outline-primary"
+                title="Sign Out"
+                aria-label="Sign Out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => openAuthModal('Sign In')}
+              className="text-xs h-8 px-2.5 gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Log In</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -182,6 +209,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ currentConversationId 
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={(e) => {
+                if (!user && item.to !== '/app/chats') {
+                  e.preventDefault();
+                  openAuthModal(`Access ${item.label}`);
+                }
+              }}
               className={({ isActive }) =>
                 `relative p-2.5 rounded-xl transition-all flex flex-col items-center gap-1 text-xs font-medium focus-visible:outline-primary ${
                   isActive
@@ -219,7 +252,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ currentConversationId 
           <span>Active Channels</span>
           <button
             type="button"
-            onClick={() => setIsNewChatOpen(true)}
+            onClick={() => {
+              if (!user) {
+                openAuthModal('Start a private conversation');
+              } else {
+                setIsNewChatOpen(true);
+              }
+            }}
             className="p-1.5 rounded-lg hover:bg-card text-primary transition-colors focus-visible:outline-primary"
             title="New Direct Conversation"
             aria-label="New Conversation"
@@ -228,28 +267,36 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ currentConversationId 
           </button>
         </div>
 
-        {loading ? (
+        {loading && user ? (
           <div className="p-8 text-center space-y-2">
             <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
             <p className="text-xs text-text-muted">Loading conversations...</p>
           </div>
         ) : filteredConversations.length === 0 ? (
           <div className="p-6 text-center space-y-3">
-            <div className="w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center text-text-muted mx-auto">
+            <div className="w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center text-primary mx-auto shadow-crimson-sm">
               <MessageSquare className="w-5 h-5" />
             </div>
-            <p className="text-xs text-text-muted">
-              {searchQuery ? 'No conversations matching search.' : 'No conversations yet.'}
+            <p className="text-xs font-semibold text-text">
+              {searchQuery ? 'No conversations matching search.' : 'Your conversations start here.'}
+            </p>
+            <p className="text-[11px] text-text-muted">
+              {!searchQuery && 'Connect with people and start a conversation on ORBIX.'}
             </p>
             {!searchQuery && (
               <Button
-                variant="outline"
                 size="sm"
-                onClick={() => setIsNewChatOpen(true)}
-                className="text-xs gap-1.5"
+                onClick={() => {
+                  if (!user) {
+                    openAuthModal('Connect with people and start a conversation on ORBIX');
+                  } else {
+                    setIsNewChatOpen(true);
+                  }
+                }}
+                className="text-xs gap-1.5 shadow-crimson-sm"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Start a Chat</span>
+                <span>Start Chatting</span>
               </Button>
             )}
           </div>
@@ -329,13 +376,31 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ currentConversationId 
 
       {/* Network & Backend Status Indicator */}
       <div className="p-3 border-t border-border bg-card/60 flex items-center justify-between text-xs font-mono text-text-muted">
-        <div className="flex items-center gap-2">
-          <Radio className="w-3.5 h-3.5 text-success animate-pulse" />
-          <span>Realtime Live</span>
-        </div>
-        <span className="text-[10px] text-text-muted">
-          {Object.keys(onlineUsers).length} online
-        </span>
+        {user ? (
+          <>
+            <div className="flex items-center gap-2">
+              <Radio className="w-3.5 h-3.5 text-success animate-pulse" />
+              <span>Realtime Live</span>
+            </div>
+            <span className="text-[10px] text-text-muted">
+              {Object.keys(onlineUsers).length} online
+            </span>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <span>Guest Preview</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => openAuthModal('Sign In')}
+              className="text-primary hover:underline text-[11px] font-semibold font-sans"
+            >
+              Sign In
+            </button>
+          </>
+        )}
       </div>
 
       {/* New Direct Chat Modal */}
@@ -343,7 +408,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ currentConversationId 
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-surface border border-border rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-border">
-              <h3 className="text-base font-bold text-text">New Direct Conversation</h3>
+              <div>
+                <h3 className="text-base font-bold text-text">Find people by username</h3>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  Ask your friends for their ORBIX username to find them.
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsNewChatOpen(false)}
@@ -354,29 +424,38 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ currentConversationId 
               </button>
             </div>
 
-            <div className="relative">
-              <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-              <Input
-                type="search"
-                autoFocus
-                placeholder="Search by username or display name..."
-                value={userSearchQuery}
-                onChange={(e) => handleUserSearch(e.target.value)}
-                className="pl-9 bg-card text-xs h-10"
-              />
+            <div className="space-y-1.5">
+              <label htmlFor="userSearchInput" className="block text-xs font-medium text-text">
+                Find people by username
+              </label>
+              <div className="relative">
+                <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  id="userSearchInput"
+                  type="search"
+                  autoFocus
+                  placeholder="Enter a username... (e.g. @sheran)"
+                  value={userSearchQuery}
+                  onChange={(e) => handleUserSearch(e.target.value)}
+                  className="pl-9 bg-card text-xs h-10"
+                />
+              </div>
+              <p className="text-[10px] text-text-muted font-mono">
+                Example: @sheran
+              </p>
             </div>
 
             <div className="max-h-60 overflow-y-auto space-y-1">
               {searchLoading ? (
                 <div className="py-6 text-center space-y-2">
                   <Loader2 className="w-5 h-5 animate-spin text-primary mx-auto" />
-                  <p className="text-xs text-text-muted">Searching database...</p>
+                  <p className="text-xs text-text-muted">Searching usernames...</p>
                 </div>
               ) : searchResults.length === 0 ? (
                 <p className="text-center py-6 text-xs text-text-muted">
                   {userSearchQuery.trim()
-                    ? 'No matching users found.'
-                    : 'Type a name or username to search.'}
+                    ? 'No users found matching that exact username.'
+                    : 'Enter an ORBIX username to begin a conversation.'}
                 </p>
               ) : (
                 searchResults.map((target) => (
@@ -385,21 +464,35 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ currentConversationId 
                     type="button"
                     disabled={startingChatId === target.id}
                     onClick={() => handleStartDirectChat(target.id)}
-                    className="w-full p-2.5 rounded-xl hover:bg-card flex items-center justify-between text-left transition-colors border border-transparent hover:border-border"
+                    className="w-full p-2.5 rounded-xl hover:bg-card flex items-center justify-between text-left transition-colors border border-transparent hover:border-border group"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-xs">
-                        {target.display_name.substring(0, 2).toUpperCase()}
-                      </div>
+                      {target.avatar_url ? (
+                        <img
+                          src={target.avatar_url}
+                          alt={target.username}
+                          className="w-10 h-10 rounded-full object-cover border border-border shrink-0"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-xs shrink-0">
+                          {target.display_name.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
                       <div>
-                        <p className="text-xs font-semibold text-text">{target.display_name}</p>
-                        <p className="text-[11px] text-text-muted">@{target.username}</p>
+                        {/* Username prominently displayed first */}
+                        <p className="text-sm font-bold text-text group-hover:text-primary transition-colors">
+                          @{target.username}
+                        </p>
+                        {/* Display name as secondary info */}
+                        <p className="text-[11px] text-text-muted">{target.display_name}</p>
                       </div>
                     </div>
                     {startingChatId === target.id ? (
                       <Loader2 className="w-4 h-4 animate-spin text-primary" />
                     ) : (
-                      <span className="text-xs text-primary font-medium">Start Chat</span>
+                      <span className="text-xs text-primary font-medium px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20">
+                        Chat
+                      </span>
                     )}
                   </button>
                 ))
