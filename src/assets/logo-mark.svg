@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="orbix-crimson-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF2E4D"/>
+      <stop offset="100%" stop-color="#D10F2F"/>
+    </linearGradient>
+    <linearGradient id="orbix-ring-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8B0000" stop-opacity="0.2"/>
+      <stop offset="50%" stop-color="#D10F2F"/>
+      <stop offset="100%" stop-color="#FF4D6D"/>
+    </linearGradient>
+  </defs>
+  <path d="M 16,56 A 42 16 35 0 1 84,44" stroke="url(#orbix-ring-grad)" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 2" opacity="0.6"/>
+  <path d="M 50,22 C 34.5,22 22,34.5 22,50 C 22,55.8 23.8,61.2 26.8,65.6 L 24,78 L 36.8,74.5 C 40.8,76.8 45.3,78 50,78 C 65.5,78 78,65.5 78,50 C 78,34.5 65.5,22 50,22 Z" fill="url(#orbix-crimson-grad)"/>
+  <circle cx="43" cy="46" r="6.5" fill="#FFFFFF"/>
+  <circle cx="58" cy="46" r="4.5" fill="#FFFFFF" fill-opacity="0.85"/>
+  <circle cx="69" cy="46" r="3" fill="#FFFFFF" fill-opacity="0.6"/>
+  <path d="M 84,44 A 42 16 35 0 1 16,56" stroke="url(#orbix-ring-grad)" stroke-width="4.5" stroke-linecap="round"/>
+  <circle cx="83" cy="45" r="4" fill="#FFFFFF"/>
+  <circle cx="83" cy="45" r="6" stroke="#D10F2F" stroke-width="2"/>
+</svg>
+
