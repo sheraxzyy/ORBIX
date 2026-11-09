@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
-import type { Message, MessageReaction } from '@/types/database.types';
+import type { Message, MessageReaction, MessageReceipt } from '@/types/database.types';
 
-export type { Message, MessageReaction };
+export type { Message, MessageReaction, MessageReceipt };
 
 export interface MessageWithReactions extends Message {
   reactions?: MessageReaction[];
@@ -11,6 +11,9 @@ export interface MessageWithReactions extends Message {
 }
 
 export const messageService = {
+  /**
+   * Fetch messages for a conversation, including reactions and receipt status
+   */
   async getMessages(
     conversationId: string,
     limit = 50,
@@ -33,27 +36,43 @@ export const messageService = {
 
     const msgList = messages as Message[];
     const reversed = [...msgList].reverse();
-
     const messageIds = reversed.map((m) => m.id);
-    const { data: reactions } = await supabase
-      .from('message_reactions')
-      .select('*')
-      .in('message_id', messageIds);
+
+    // Parallel fetch reactions and message receipts
+    const [reactionsRes, receiptsRes] = await Promise.allSettled([
+      supabase.from('message_reactions').select('*').in('message_id', messageIds),
+      supabase.from('message_receipts').select('*').in('message_id', messageIds),
+    ]);
 
     const reactionMap = new Map<string, MessageReaction[]>();
-    for (const r of (reactions || []) as MessageReaction[]) {
-      const list = reactionMap.get(r.message_id) || [];
-      list.push(r);
-      reactionMap.set(r.message_id, list);
+    if (reactionsRes.status === 'fulfilled' && reactionsRes.value.data) {
+      for (const r of reactionsRes.value.data as MessageReaction[]) {
+        const list = reactionMap.get(r.message_id) || [];
+        list.push(r);
+        reactionMap.set(r.message_id, list);
+      }
+    }
+
+    const receiptMap = new Map<string, 'delivered' | 'read'>();
+    if (receiptsRes.status === 'fulfilled' && receiptsRes.value.data) {
+      for (const rc of receiptsRes.value.data as MessageReceipt[]) {
+        const current = receiptMap.get(rc.message_id);
+        if (rc.status === 'read' || current !== 'read') {
+          receiptMap.set(rc.message_id, rc.status);
+        }
+      }
     }
 
     return reversed.map((m) => ({
       ...m,
       reactions: reactionMap.get(m.id) || [],
-      status: 'read' as const,
+      status: receiptMap.get(m.id) || 'read',
     }));
   },
 
+  /**
+   * Insert a message into PostgreSQL with client-side deduplication client_id
+   */
   async sendMessage(
     conversationId: string,
     senderId: string,
@@ -143,6 +162,9 @@ export const messageService = {
     if (error) throw error;
   },
 
+  /**
+   * Advance conversation read pointer and record read receipt
+   */
   async markAsRead(
     conversationId: string,
     userId: string,
@@ -159,6 +181,46 @@ export const messageService = {
       .eq('user_id', userId);
 
     if (error) console.error('Failed to update read pointer:', error);
+
+    // Record read receipt in message_receipts
+    try {
+      await supabase.from('message_receipts').upsert(
+        {
+          message_id: lastMessageId,
+          user_id: userId,
+          conversation_id: conversationId,
+          status: 'read',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'message_id,user_id' }
+      );
+    } catch {
+      // Non-fatal if table is awaiting migration
+    }
+  },
+
+  /**
+   * Record delivery receipt when recipient receives realtime message
+   */
+  async markAsDelivered(
+    conversationId: string,
+    userId: string,
+    messageId: string
+  ): Promise<void> {
+    try {
+      await supabase.from('message_receipts').upsert(
+        {
+          message_id: messageId,
+          user_id: userId,
+          conversation_id: conversationId,
+          status: 'delivered',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'message_id,user_id' }
+      );
+    } catch {
+      // Non-fatal
+    }
   },
 
   subscribeToConversationMessages(

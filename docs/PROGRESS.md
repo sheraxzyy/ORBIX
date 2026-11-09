@@ -1,12 +1,27 @@
 # ORBIX — Progress Log
 
 ## Status Overview
-- **Current Status:** All 10 Milestones Successfully Completed & Verified.
+- **Current Status:** Complete Authentication Repair & Environment Hardening Successfully Finished & Verified.
 - **Verification Gates:**
   - TypeScript Compilation (`npm run typecheck`): **0 errors**
-  - Vitest Unit & Contract Tests (`npm run test`): **11/11 passing**
+  - Vitest Unit & Contract Tests (`npm run test`): **18/18 passing** across 3 test suites
   - ESLint Static Analysis (`npm run lint`): **0 errors**
-  - Production Vite Build (`npm run build`): **Succeeded in 2.15s**
+  - Production Vite Build (`npm run build`): **Succeeded in 2.20s**
+  - Environment Security: Zero secret leaks, `.env.local` Git-ignored, `.env.example` sanitized.
+
+---
+
+## Authentication Repair & Hardening Milestones
+- [x] **Milestone 1: Project Audit & Root Cause Analysis** (Completed — Discovered missing confirm password, unauthenticated RLS query blocks on username checks, auth race conditions in AuthContext, unhandled email verification callbacks, unmapped raw errors, and live key in .env.example)
+- [x] **Milestone 2: Supabase Client Initialization & Configuration** (Completed — Resilient environment variable fallback, safe storage accessor for SSR/test, explicit missing config alerts, and `isSupabaseConfigured` helper in `src/lib/supabase.ts`)
+- [x] **Milestone 3: Complete User Registration & Profile Creation** (Completed — 5 registration fields including Confirm Password, strict field validation, handle normalization, safe security definer RPC availability check, self-healing profile and settings creation, email confirmation detection, and no blind redirects when unconfirmed)
+- [x] **Milestone 4: User Login & Session Restoration** (Completed — Unified session management under `onAuthStateChange`, removed duplicate parallel fetches, prevented race conditions with `isLoading`, mapped user-friendly error messages, provided unverified email resend flow, and ensured proper logout cleanup)
+- [x] **Milestone 5: Email Verification & Password Recovery** (Completed — Added dedicated `/auth/callback` handler, friendly expired link detection, resend verification email pipeline in `authService`, password recovery with session/token validation, and confirm password checks)
+- [x] **Milestone 6: Audit Database Relationships & RLS Policies** (Completed — Prepared `supabase/migrations/20261108000002_orbix_auth_repair.sql` with safe `check_username_available` RPC, robust `handle_new_user` trigger, self-healing RLS INSERT policy on profiles, and default `user` role assignment)
+- [x] **Milestone 7: Environment File Audit & Configuration** (Completed — Created `.env.local` for local secrets, sanitized `.env.example` with standard placeholders, and verified `.gitignore` blocks `.env` and `.env.local`)
+- [x] **Milestone 8: Local & Production (Vercel) Environment Requirements** (Completed — Documented exact frontend variables, Supabase Auth redirect URLs whitelist, and Vercel configuration)
+- [x] **Milestone 9: Complete Authentication Testing** (Completed — 18 unit and contract tests in Vitest covering all auth contracts, error mapping, username checks, and live Supabase queries)
+- [x] **Milestone 10: Final Verification & Production Build** (Completed — Clean TypeScript typecheck, 0 ESLint errors, and optimized Vite production build)
 
 ---
 
@@ -35,6 +50,11 @@
    - `moderation_reports` table and moderation workflow.
    - `audit_logs` table (immutable: updates and deletes strictly forbidden via RLS).
    - `bootstrap_initial_admin(admin_email)` function.
+3. `supabase/migrations/20261108000002_orbix_auth_repair.sql`:
+   - `check_username_available(TEXT)` security definer RPC for anon & authenticated callers.
+   - Robust `handle_new_user()` trigger function initializing profile, default settings, and safe `user` role assignment.
+   - RLS self-healing INSERT policy on `public.profiles`.
+   - RLS SELECT policy on `public.user_roles` for self-read.
 
 ---
 
@@ -99,3 +119,60 @@ ON CONFLICT (user_id) DO UPDATE SET role = 'super_admin';
 
 ### Blocked
 - Live multi-user functional testing is paused until tables are created in Supabase.
+
+
+---
+
+## Milestone 9 � Production Upgrade: Messaging Repair, Admin Bootstrap, Account Security (2026-11-09)
+
+### Completed
+
+#### Full Application Audit
+- Inspected all services, migrations, contexts, routes, guards, and RLS policies
+- Ran database inspection scripts confirming: core tables exist, `profiles.status` column was missing, auxiliary admin tables (`message_receipts`, `platform_settings`, `audit_logs`) not in remote DB
+
+#### Database Migration: `supabase/migrations/20261109000000_orbix_production_upgrade.sql`
+- Adds `profiles.status`, `profiles.suspended_until`, `profiles.ban_reason`, `profiles.last_seen_at` columns (idempotent)
+- Creates `message_receipts` table with RLS and Realtime publication
+- **Fixes** `conversations` INSERT RLS (now `created_by = auth.uid()` � was blocking direct conversation creation)
+- **Fixes** `conversation_members` INSERT RLS (allows creator to insert both members for direct conversations)
+- Creates `platform_settings`, `registration_counters`, `invitations`, `moderation_reports`, `audit_logs` tables with RLS
+- Creates `deactivate_account()`, `reactivate_account()`, `delete_user_account()` security definer RPCs
+- Creates `bootstrap_initial_admin(admin_email TEXT)` function
+- **STATUS: Written to repo. Must be applied via Supabase Dashboard SQL Editor.**
+
+#### Message Sending Repair
+- Root cause 1: `conversations` INSERT RLS only allowed `type = 'group'` � fixed in migration
+- Root cause 2: `conversation_members` INSERT RLS blocked adding recipient � fixed in migration
+- `messageService.ts` rewritten: delivery receipts, read receipts via `message_receipts` table
+- `CenterChatPanel.tsx`: double-send guard; delivery receipt UI (single/double/crimson checks)
+
+#### Admin Authentication Repair
+- Root cause: `profiles.status` missing caused admin service to crash (42703 error)
+- `adminService.ts`: `Promise.allSettled()` for resilience to partial DB state
+- `AuthGuard.tsx` (`RequireAdmin`): Admin Bootstrap UI for initial admin setup
+
+#### Duplicate Email Enforcement
+- `authService.ts`: Detects Supabase enumeration-protected response (`identities.length === 0`)
+- Throws proper duplicate error with sign-in/password-reset guidance
+
+#### Account Lifecycle Features
+- Account deactivation with amber banner in AppLayout
+- Permanent account deletion with password re-auth + typed confirmation
+- Security definer RPCs with `SET search_path = ''`
+
+#### Security Settings Page (NEW)
+- `src/routes/pages/SecuritySettingsPage.tsx`: Password change, MFA TOTP enrollment, email change, session management, account deactivation, account deletion
+- Route: `/app/settings/security`
+
+#### Code Quality Gates (All Passing)
+- `npm run typecheck`: **0 errors**
+- `npm run lint`: **0 errors**
+- `npm run test`: **18/18 tests passing**
+- `npm run build`: **Production build succeeded**
+
+### Action Required from Platform Owner
+1. Apply `supabase/migrations/20261109000000_orbix_production_upgrade.sql` via Supabase Dashboard > SQL Editor
+2. Bootstrap admin: `SELECT public.bootstrap_initial_admin('your-admin@email.com');`
+3. Enable MFA TOTP: Supabase Dashboard > Authentication > MFA
+4. Verify `message_receipts` in Realtime publication

@@ -12,7 +12,7 @@ export interface Profile {
   display_name: string;
   avatar_url: string | null;
   bio: string;
-  status?: 'active' | 'suspended' | 'banned';
+  status?: 'active' | 'suspended' | 'banned' | 'deactivated';
   suspended_until?: string | null;
   ban_reason?: string | null;
   last_seen_at?: string | null;
@@ -97,6 +97,16 @@ export interface MessageReaction {
   user_id: string;
   emoji: string;
   created_at: string;
+}
+
+export interface MessageReceipt {
+  id: string;
+  message_id: string;
+  user_id: string;
+  conversation_id: string;
+  status: 'delivered' | 'read';
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Attachment {

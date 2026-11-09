@@ -14,17 +14,28 @@ export const ForgotPasswordPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      setErrorMsg('Please enter your email address.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
 
     setLoading(true);
     setErrorMsg(null);
 
     try {
-      await authService.resetPasswordForEmail(email);
+      await authService.resetPasswordForEmail(cleanEmail);
       setSubmitted(true);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to send recovery email';
-      setErrorMsg(msg);
+      const formatted = authService.formatAuthError(err);
+      setErrorMsg(formatted);
     } finally {
       setLoading(false);
     }
@@ -61,14 +72,14 @@ export const ForgotPasswordPage: React.FC = () => {
               <CheckCircle2 className="w-12 h-12 text-success mx-auto" />
               <h2 className="text-base font-bold text-text">Recovery Link Dispatched</h2>
               <p className="text-xs text-text-muted leading-relaxed">
-                If an account exists for {email}, a password recovery link has been sent to your email.
+                If an account exists for <span className="font-semibold text-text">{email}</span>, a password recovery link has been sent to your email.
               </p>
               <Button variant="outline" className="w-full mt-4" asChild>
                 <Link to="/login">Return to Login</Link>
               </Button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               <div className="space-y-1.5">
                 <label htmlFor="recoveryEmail" className="block text-xs font-medium text-text">
                   Registered Email Address
@@ -83,6 +94,7 @@ export const ForgotPasswordPage: React.FC = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
                   />
                 </div>
               </div>
@@ -110,4 +122,5 @@ export const ForgotPasswordPage: React.FC = () => {
     </div>
   );
 };
+
 export default ForgotPasswordPage;

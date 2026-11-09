@@ -200,10 +200,13 @@ export const conversationService = {
     if (createErr) throw createErr;
     const createdConv = newConv as { id: string };
 
-    await supabase.from('conversation_members').insert([
+    const { error: memErr } = await supabase.from('conversation_members').insert([
       { conversation_id: createdConv.id, user_id: user.id, role: 'member' },
       { conversation_id: createdConv.id, user_id: targetUserId, role: 'member' },
     ]);
+    if (memErr) {
+      console.warn('Membership insert warning in fallback direct creation:', memErr.message);
+    }
 
     return createdConv.id;
   },

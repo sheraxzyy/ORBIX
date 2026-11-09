@@ -123,7 +123,8 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
         });
         setTimeout(scrollToBottom, 50);
 
-        if (user) {
+        if (user && newMsg.sender_id !== user.id) {
+          messageService.markAsDelivered(conversationId, user.id, newMsg.id);
           messageService.markAsRead(conversationId, user.id, newMsg.id, newMsg.seq);
         }
       },
@@ -191,6 +192,7 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (sending) return;
     if (!user) {
       openAuthModal('Sign in to send messages');
       return;
@@ -602,11 +604,15 @@ export const CenterChatPanel: React.FC<CenterChatPanelProps> = ({
                                 </button>
                               ) : msg.status === 'sent' ? (
                                 <span title="Sent">
-                                  <Check className="w-3.5 h-3.5 text-white/80" />
+                                  <Check className="w-3.5 h-3.5 text-white/70" />
+                                </span>
+                              ) : msg.status === 'delivered' ? (
+                                <span title="Delivered">
+                                  <CheckCheck className="w-3.5 h-3.5 text-white/70" />
                                 </span>
                               ) : (
-                                <span title="Delivered / Read">
-                                  <CheckCheck className="w-3.5 h-3.5 text-white" />
+                                <span title="Read">
+                                  <CheckCheck className="w-3.5 h-3.5 text-primary" />
                                 </span>
                               )}
                             </span>

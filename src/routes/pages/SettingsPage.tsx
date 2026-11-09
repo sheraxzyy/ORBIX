@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Bell, Palette, ChevronRight, Check } from 'lucide-react';
+import { Shield, ShieldCheck, Bell, Palette, ChevronRight, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, type Theme } from '@/contexts/ThemeContext';
 
@@ -18,6 +18,12 @@ export const SettingsPage: React.FC = () => {
   };
 
   const sections = [
+    {
+      to: '/app/settings/security',
+      icon: ShieldCheck,
+      title: 'Security & Account',
+      desc: 'Two-factor authentication, active sessions, change password, and account lifecycle.',
+    },
     {
       to: '/app/settings/privacy',
       icon: Shield,

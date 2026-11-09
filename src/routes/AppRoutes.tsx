@@ -10,6 +10,7 @@ const LoginPage = lazy(() => import('@/routes/pages/LoginPage'));
 const RegisterPage = lazy(() => import('@/routes/pages/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('@/routes/pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('@/routes/pages/ResetPasswordPage'));
+const AuthCallbackPage = lazy(() => import('@/routes/pages/AuthCallbackPage'));
 const InviteLandingPage = lazy(() => import('@/routes/pages/InviteLandingPage'));
 const NotFoundPage = lazy(() => import('@/routes/pages/NotFoundPage'));
 
@@ -22,6 +23,7 @@ const ProfilePage = lazy(() => import('@/routes/pages/ProfilePage'));
 const SettingsPage = lazy(() => import('@/routes/pages/SettingsPage'));
 const PrivacySettingsPage = lazy(() => import('@/routes/pages/PrivacySettingsPage'));
 const NotificationSettingsPage = lazy(() => import('@/routes/pages/NotificationSettingsPage'));
+const SecuritySettingsPage = lazy(() => import('@/routes/pages/SecuritySettingsPage'));
 
 // Admin Dashboard View
 const AdminDashboardPage = lazy(() => import('@/routes/pages/admin/AdminDashboardPage'));
@@ -53,6 +55,7 @@ export const AppRoutes: React.FC = () => {
         />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/invite/:code" element={<InviteLandingPage />} />
 
         {/* Messaging Interface (Public guest-accessible shell with protected features) */}
@@ -105,6 +108,14 @@ export const AppRoutes: React.FC = () => {
             element={
               <RequireAuth>
                 <NotificationSettingsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="settings/security"
+            element={
+              <RequireAuth>
+                <SecuritySettingsPage />
               </RequireAuth>
             }
           />

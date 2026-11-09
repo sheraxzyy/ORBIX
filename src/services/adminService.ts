@@ -37,7 +37,7 @@ export const adminService = {
       const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-      // Parallel count queries for maximum performance
+      // Parallel count queries using Promise.allSettled for maximum resilience
       const [
         totalUsersRes,
         activeUsersRes,
@@ -47,7 +47,7 @@ export const adminService = {
         totalConvsRes,
         totalGroupsRes,
         totalMessagesRes,
-      ] = await Promise.all([
+      ] = await Promise.allSettled([
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('status', 'active'),
         supabase.from('profiles').select('id', { count: 'exact', head: true }).in('status', ['suspended', 'banned']),
@@ -58,14 +58,23 @@ export const adminService = {
         supabase.from('messages').select('id', { count: 'exact', head: true }),
       ]);
 
-      const totalUsers = totalUsersRes.count ?? 0;
-      const activeUsers = activeUsersRes.count ?? totalUsers;
-      const suspendedAccounts = suspendedUsersRes.count ?? 0;
-      const registrationsToday = regsTodayRes.count ?? 0;
-      const registrationsThisWeek = regsWeekRes.count ?? 0;
-      const totalConversations = totalConvsRes.count ?? 0;
-      const totalGroups = totalGroupsRes.count ?? 0;
-      const totalMessages = totalMessagesRes.count ?? 0;
+      const totalUsers = totalUsersRes.status === 'fulfilled' ? (totalUsersRes.value.count ?? 0) : 0;
+      const activeUsers =
+        activeUsersRes.status === 'fulfilled' && activeUsersRes.value.count !== null
+          ? activeUsersRes.value.count
+          : totalUsers;
+      const suspendedAccounts =
+        suspendedUsersRes.status === 'fulfilled' ? (suspendedUsersRes.value.count ?? 0) : 0;
+      const registrationsToday =
+        regsTodayRes.status === 'fulfilled' ? (regsTodayRes.value.count ?? 0) : 0;
+      const registrationsThisWeek =
+        regsWeekRes.status === 'fulfilled' ? (regsWeekRes.value.count ?? 0) : 0;
+      const totalConversations =
+        totalConvsRes.status === 'fulfilled' ? (totalConvsRes.value.count ?? 0) : 0;
+      const totalGroups =
+        totalGroupsRes.status === 'fulfilled' ? (totalGroupsRes.value.count ?? 0) : 0;
+      const totalMessages =
+        totalMessagesRes.status === 'fulfilled' ? (totalMessagesRes.value.count ?? 0) : 0;
 
       // Generate activity timeline points for the past 7 days based on real counts
       const growthChart: { date: string; users: number; messages: number }[] = [];
@@ -434,5 +443,16 @@ export const adminService = {
       created_at: c.created_at || new Date().toISOString(),
       created_by: c.created_by || null,
     }));
+  },
+
+  /**
+   * Secure admin bootstrap procedure
+   */
+  async bootstrapInitialAdmin(adminEmail: string): Promise<string> {
+    const { data, error } = await supabase.rpc('bootstrap_initial_admin', {
+      admin_email: adminEmail.trim().toLowerCase(),
+    });
+    if (error) throw error;
+    return data as string;
   },
 };

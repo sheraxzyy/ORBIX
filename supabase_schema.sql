@@ -1193,3 +1193,155 @@ BEGIN
     EXCEPTION WHEN duplicate_object THEN NULL; END;
   END IF;
 END $$;
+
+
+-- ====================================================================
+-- 13. MESSAGE RECEIPTS & SECURITY POLICIES
+-- ====================================================================
+
+CREATE TABLE IF NOT EXISTS public.message_receipts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  message_id UUID NOT NULL REFERENCES public.messages(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  conversation_id UUID NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('delivered', 'read')),
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  CONSTRAINT unique_message_user_receipt UNIQUE (message_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_receipts_message ON public.message_receipts(message_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_conv_user ON public.message_receipts(conversation_id, user_id);
+
+ALTER TABLE public.message_receipts ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'message_receipts' AND policyname = 'Members can view message receipts'
+  ) THEN
+    CREATE POLICY "Members can view message receipts"
+      ON public.message_receipts FOR SELECT
+      TO authenticated
+      USING (public.is_conversation_member(conversation_id, (SELECT auth.uid())));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'message_receipts' AND policyname = 'Users can upsert own message receipts'
+  ) THEN
+    CREATE POLICY "Users can upsert own message receipts"
+      ON public.message_receipts FOR ALL
+      TO authenticated
+      USING (user_id = (SELECT auth.uid()))
+      WITH CHECK (user_id = (SELECT auth.uid()));
+  END IF;
+END $$;
+
+-- DIRECT CONVERSATIONS RLS POLICIES REPAIR
+DROP POLICY IF EXISTS "Authenticated users can create group conversations" ON public.conversations;
+DROP POLICY IF EXISTS "Authenticated users can create conversations" ON public.conversations;
+CREATE POLICY "Authenticated users can create conversations"
+  ON public.conversations FOR INSERT
+  TO authenticated
+  WITH CHECK (created_by = (SELECT auth.uid()));
+
+DROP POLICY IF EXISTS "Users can join or admins add members" ON public.conversation_members;
+CREATE POLICY "Users can join or admins add members"
+  ON public.conversation_members FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    user_id = (SELECT auth.uid())
+    OR public.is_group_admin(conversation_id, (SELECT auth.uid()))
+    OR EXISTS (
+      SELECT 1 FROM public.conversations c
+      WHERE c.id = conversation_id
+        AND c.created_by = (SELECT auth.uid())
+        AND c.type = 'direct'
+    )
+  );
+
+-- ACCOUNT DEACTIVATION & REACTIVATION SECURE FUNCTIONS
+CREATE OR REPLACE FUNCTION public.deactivate_account()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_user_id UUID := auth.uid();
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  UPDATE public.profiles
+  SET status = 'deactivated', updated_at = now()
+  WHERE id = v_user_id;
+
+  RETURN TRUE;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.deactivate_account() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.reactivate_account()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_user_id UUID := auth.uid();
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  UPDATE public.profiles
+  SET status = 'active', updated_at = now()
+  WHERE id = v_user_id AND status = 'deactivated';
+
+  RETURN TRUE;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.reactivate_account() TO authenticated;
+
+-- SECURE ACCOUNT DELETION WORKFLOW
+CREATE OR REPLACE FUNCTION public.delete_user_account()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_user_id UUID := auth.uid();
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  UPDATE public.profiles
+  SET display_name = 'Deleted User',
+      avatar_url = NULL,
+      bio = 'This account was deleted.',
+      status = 'banned'
+  WHERE id = v_user_id;
+
+  DELETE FROM public.contacts WHERE user_id = v_user_id OR contact_id = v_user_id;
+  DELETE FROM public.user_blocks WHERE blocker_id = v_user_id OR blocked_id = v_user_id;
+
+  DELETE FROM public.conversation_members
+  WHERE user_id = v_user_id
+    AND conversation_id IN (SELECT id FROM public.conversations WHERE type = 'group');
+
+  DELETE FROM public.user_settings WHERE user_id = v_user_id;
+  DELETE FROM public.notifications WHERE user_id = v_user_id;
+
+  DELETE FROM auth.users WHERE id = v_user_id;
+
+  RETURN TRUE;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.delete_user_account() TO authenticated;

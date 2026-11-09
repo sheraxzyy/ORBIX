@@ -43,6 +43,19 @@ export const profileService = {
       return false;
     }
 
+    // 1. Try safe Security Definer RPC if available (bypasses anon RLS restrictions safely)
+    try {
+      const { data, error } = await supabase.rpc('check_username_available', {
+        check_username: normalized,
+      });
+      if (!error && typeof data === 'boolean') {
+        return data;
+      }
+    } catch {
+      // Continue to direct query fallback
+    }
+
+    // 2. Direct query fallback
     let req = supabase
       .from('profiles')
       .select('id')
@@ -55,10 +68,45 @@ export const profileService = {
 
     const { data, error } = await req;
     if (error) {
-      console.error('Error verifying username uniqueness:', error);
+      console.warn('Direct username query non-fatal warning (relying on DB constraint):', error.message);
       return true; // Database constraint will enforce if query fails
     }
     return !data || data.length === 0;
+  },
+
+  async ensureProfile(
+    userId: string,
+    fallbackMeta?: { username?: string; display_name?: string }
+  ): Promise<Profile | null> {
+    const existing = await this.getProfile(userId).catch(() => null);
+    if (existing) return existing;
+
+    const baseUsername =
+      fallbackMeta?.username?.toLowerCase().trim() ||
+      `user_${userId.substring(0, 6)}`;
+    const displayName =
+      fallbackMeta?.display_name?.trim() ||
+      baseUsername;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          username: baseUsername,
+          display_name: displayName,
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        return data as Profile;
+      }
+    } catch (insertErr) {
+      console.warn('Profile self-healing insert warning:', insertErr);
+    }
+
+    return this.getProfile(userId).catch(() => null);
   },
 
   async updateProfile(
@@ -118,7 +166,7 @@ export const profileService = {
 
   async uploadAvatar(userId: string, file: File): Promise<string> {
     const ext = file.name.split('.').pop() || 'jpg';
-    const filePath = `avatars/${userId}-${Date.now()}.${ext}`;
+    const filePath = `${userId}/${Date.now()}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from('avatars')
